@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "./CoBell-Sender"
+		},
+                {
+                        "path": "./CoBell-Receiver-ESP32"
+                }
+	],
+	"settings": {}
+}
