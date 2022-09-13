@@ -1,0 +1,8 @@
+# CoBell-Receiver-ESP32
+基于ESP32（NodeMCU 32s）的门铃接受端
+
+## 硬件组件
+ - NodeMCU 32s
+ - nRF24L01
+ - MAX98357a I2S D-Amp
+

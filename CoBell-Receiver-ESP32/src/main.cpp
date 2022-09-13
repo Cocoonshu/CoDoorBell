@@ -1,22 +1,14 @@
 #include <Arduino.h>
+#include <pinout.h>
 
 #include <SPI.h>
 #include <nRF24L01.h>
-#include <RF24.h>
+#include "printf.h"
+#include "RF24.h"
 
-#include <avr/sleep.h>
-#include <avr/power.h>
-
-#define PB_INVALID (PB5 + 1)
 
 /**
  * nRF24L01 instance
- *                              +-\/-+
- *                NC      PB5  1|o   |8  Vcc --- nRF24L01  VCC, pin2 --- LED --- 5V
- * nRF24L01  CE, pin3 -x- PB3  2|    |7  PB2 --- nRF24L01  SCK, pin5
- * nRF24L01 CSN, pin4 --- PB4  3|    |6  PB1 --- nRF24L01 MOSI, pin6
- * nRF24L01 GND, pin1 --- GND  4|    |5  PB0 --- nRF24L01 MISO, pin7
- *                              +----+
  * 
  * How to transmit:
  *  1. Use the same CRC configuration
@@ -40,8 +32,8 @@
  *  8. Set CE high
  */
 RF24 radio(
-  PB3, // PB_INVALID, // CE_PIN，使用无效pin脚
-  PB4  // CSN_PIN
+  RF24_CE, // CE pin
+  RF24_CSN // CS pin
 );
 
 /**
@@ -61,39 +53,14 @@ enum TargetAddress {
   SOURCE = 0, SINK = 1
 };
 
-/**
- * 启动后闪灯：1长3短
- */
-static void blinkForLaunched() {
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(1000);
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(100);
-
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(100);
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(100);
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(100);
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(100);
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(100);
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(100);
-
-  delay(2000);
-}
-
-static void sendAlartEvent() {
+static void listenAlertEvent() {
   // 开始在SPI总线上初始化
   if (!radio.begin()) {
-    printf("Radio device connect failed, shutdown!");
+    Serial.println("Radio device connect failed, shutdown!");
     radio.powerDown();
     return;
+  } else {
+    Serial.println("Radio device online");
   }
 
   radio.setCRCLength(RF24_CRC_16); // 1. 所有设备使用相同的CRC配置
@@ -108,43 +75,34 @@ static void sendAlartEvent() {
   radio.setDataRate(RF24_1MBPS);   // 7. 配置相同的通信速率：1Mbps
   radio.setPALevel(RF24_PA_MAX);   // 8. 配置发送功率：0 dBm
   radio.powerUp();                 // 9. 无线发射开机
-
-  // 设置发送负载大小，负载设置为发送内容的大小会提高性能
-  radio.setPayloadSize(sizeof(alertMessage));
+  Serial.println("Radio device power up");
   
-  // 开启发送管道
-  radio.openWritingPipe(targetAddress[SINK]);
+  // 开启接收管道
+  radio.openReadingPipe(1, targetAddress[SINK]);
+  Serial.printf("Radio device open reading pipline at %s\n", targetAddress[SINK]);
 
-  // 发送消息
-  radio.write(alertMessage, sizeof(alertMessage));
-
-  // 等待消息发送完成
-  radio.txStandBy();
-
-  // 无线发射关机
-  radio.powerDown();
-}
-
-static void systemDuringSleep() {
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN); // 设置休眠模式：掉电模式
-  cli(); // 关闭全局中断
-  sleep_enable(); // 允许休眠
-  sei(); // 开启全局中断
-
-  sleep_cpu(); // 开始休眠，并等待系统被中断唤醒
-
-  sleep_disable(); // 唤醒后及时禁用休眠
+  // 开始接收信号
+  radio.startListening();
+  Serial.println("Radio device start listenning...");
 }
 
 void setup() {
-  // 调试：执行开机闪灯
-  blinkForLaunched();
+  Serial.begin(115200);
+  Serial.println("Begin Serial at 115200");
+  listenAlertEvent();
 }
 
 void loop() {
-  // 发送门铃信息
-  sendAlartEvent();
+  if (!radio.isChipConnected()) {
+    Serial.println("Radio offline");
+    return;
+  }
+  if (!radio.available()) {
+    return;
+  }
 
-  // 关机
-  systemDuringSleep();  
+  uint8_t buffer[64] = { NULL }; 
+  memset(buffer, NULL, 64);
+  radio.read(buffer, sizeof(buffer));
+  Serial.printf("Radio received: %s", buffer);
 }
